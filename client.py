@@ -39,7 +39,7 @@ data = """Ping www.google.com [172.217.175.4] 32바이트 데이터 사용:
 
 #test = CustomProtocol('BEACON_REQUEST', 1, data=b'1234')
 #test2 = CustomProtocol('BEACON_REQUEST', 2, data=b'5678')
-test3 = CustomProtocol('SHELL_RESPONSE', 0, data=data.encode('utf-8')) # ddp 데이터 구성
+test3 = CustomProtocol('SHELL_RESPONSE', 0, data=data.encode('ansi')) # ddp 데이터 구성
 
 #response = requests.post('http://192.168.21.1:2022', data=bytes(test))
 #response2 = requests.post('http://192.168.21.1:2022', data=bytes(test2))
