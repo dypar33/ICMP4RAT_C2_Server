@@ -1,2 +1,5 @@
 client.py
 __pycache__/
+log/*
+file/*
+tmp/*
