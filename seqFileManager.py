@@ -43,7 +43,7 @@ class SEQManager:
 
             cls.deleteTmpData(seq_name)
         except Exception as e:
-            raise SEQSaveError('seq save error : {}'.format(str(e)))
+            raise SEQSaveError('seq save error : {}\npath : {}\nname:{}'.format(str(e), save_path, seq_name))
         return True
 
     # 시퀀스 데이터들 제거
