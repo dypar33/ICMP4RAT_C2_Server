@@ -261,7 +261,7 @@ class CNCServer(BaseHTTPRequestHandler):
         parsed_data = self._parse_ddp(data_string)
 
         # data 유효성 검증
-        if not parsed_data or parsed_data['head'] != '0xdd':
+        if not parsed_data or parsed_data['header'] != '0xdd':
             self._response_ddp_error('invalid ddp data')
             return
 
