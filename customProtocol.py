@@ -15,6 +15,10 @@ class DDP:
         'FTP_REQUEST' : b'\x05',        
         'FTP_RESPONSE' : b'\x06'        
     }
+
+    ERROR_TABLE = {
+        'FILE_ERROR' : b'\x01'
+    }
     
     def _get_type(self, type_num):
         for k, v in self.TYPE_LIST.items():

