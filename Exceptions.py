@@ -10,3 +10,6 @@ class SEQNumError(BaseException):
 
 class SEQSaveError(BaseException):
     pass
+
+class SEQLoadError(BaseException):
+    pass

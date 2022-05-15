@@ -1,5 +1,5 @@
 import os
-from Exceptions import SEQNumError, SEQSaveError
+from Exceptions import SEQNumError, SEQSaveError, SEQLoadError
 
 class SEQManager:
     TMP_FILE_PATH = './tmp/'
@@ -19,6 +19,25 @@ class SEQManager:
                 pass
         except:
             pass
+
+    @classmethod
+    def getSeqData(cls, file_name):
+        seq_file_list = [f for f in os.listdir(cls.TMP_FILE_PATH) if f.startswith(file_name)]
+        
+        if len(seq_file_list) < 1:
+            raise SEQLoadError('no file exist')
+
+        seq_file_list.sort(key=lambda name : int(name.split('.')[-1]))
+
+        try:
+            with open(cls.TMP_FILE_PATH+seq_file_list[0], 'rb') as f:
+                data = f.read()
+                
+            os.remove(cls.TMP_FILE_PATH+seq_file_list[0])
+            
+            return [seq_file_list[0].split('.')[-1], data]
+        except Exception as e:
+            raise SEQLoadError('no file exist')
     
     # tmp 폴더의 시퀀스 데이터 merge 작업
     @classmethod
@@ -53,3 +72,5 @@ class SEQManager:
         
         for tmp_file in seq_file_list:
             os.remove(cls.TMP_FILE_PATH+tmp_file)
+
+    

