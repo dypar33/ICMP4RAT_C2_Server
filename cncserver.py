@@ -145,8 +145,8 @@ class VictimShell(BaseShell):
             victim_table[self.targetIP]['command'].append('[get file {}]'.format(" ".join(parsed_arg)))
         
 
-    def _split_sending_file(self, filePath, split_len=200):
-        split_len = int(split_len * 1e+6)
+    def _split_sending_file(self, filePath, split_len=7):
+        split_len = int(split_len * 1024) # 7KB씩 끊어서 전송
 
         with open(filePath, 'rb') as f:
             data = f.read()
