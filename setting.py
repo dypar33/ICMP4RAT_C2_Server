@@ -7,7 +7,7 @@ LIMIT_SEQ_DATA_COUNT = 999          # 분할 데이터 개수 제한 (dos 방지
                                     # 250MB * LIMIT_SEQ_DATA_COUNT
 
 
-SERVER_INFO = ('172.22.70.152', 80)     # ([ip], [port])
+SERVER_INFO = ('172.22.78.98', 80)     # ([ip], [port])
 ENCODING = 'cp949'
 SUB_ENCODING = 'utf-8' # ENCODING이 안먹힐 시 사용할 2순위 charset
 

