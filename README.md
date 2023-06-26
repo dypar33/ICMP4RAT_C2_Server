@@ -1,1 +1,1 @@
-# ICMP4RAT_CrCServer
+# ICMP4RAT_C2_Server
